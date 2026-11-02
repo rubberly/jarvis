@@ -62,7 +62,6 @@ main{display:grid;grid-template-columns:240px minmax(0,1fr) 360px;gap:20px;min-h
 .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-family:var(--font-data);font-size:12px;font-variant-numeric:tabular-nums}
 .kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar{height:3px;background:rgba(var(--hud-rgb),.12);margin-top:4px;grid-column:1/-1}
-.bar i.low{background:var(--warn);box-shadow:0 0 6px var(--warn)}
 .bar i{display:block;height:100%;background:var(--hud);box-shadow:0 0 6px var(--hud);transition:width .6s}
 #timers{display:flex;flex-direction:column;gap:8px;font-family:var(--font-data);font-size:13px}
 #timers .t{display:flex;justify-content:space-between;gap:10px;font-variant-numeric:tabular-nums}
@@ -172,10 +171,6 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
       <dl class="kv" id="sys"></dl>
     </section>
     <section class="panel">
-      <h2>Armour <span id="suitState">standby</span></h2>
-      <dl class="kv" id="suit"></dl>
-    </section>
-    <section class="panel">
       <h2>Timers</h2>
       <div id="timers"><div class="empty">No active timers.</div></div>
     </section>
@@ -191,26 +186,14 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
       </div>
     </section>
     <section class="panel">
-      <h2>Try saying</h2>
+      <h2>Controls</h2>
       <div class="hint">
-        <q>Jarvis, suit up</q><br>
-        <q>Engage flight mode</q> / <q>Land</q><br>
-        <q>Scan for threats</q><br>
-        <q>Exploded view</q> / <q>Assemble</q><br>
-        <q>Suit status</q><br>
+        <b class="hud-c">Pinch</b> grab, move and rotate the suits<br>
+        <b class="hud-c">Both hands pinch</b> resize and twist<br>
+        <q>Reset the hologram</q><br>
         <q>Switch to Mark 42 colours</q>
       </div>
     </section>
-    <section class="panel">
-      <h2>Gestures</h2>
-      <div class="hint">
-        <b class="hud-c">Pinch</b> grab, move and rotate<br>
-        <b class="hud-c">Both hands pinch</b> resize and twist<br>
-        <b class="hud-c">Open palm, hold</b> fire repulsor<br>
-        <b class="hud-c">Fist, hold</b> recall hologram<br>
-        <b class="hud-c">Flight mode</b> tilt hand to bank, raise to climb
-      </div>
-</section>
   </aside>
 
   <section class="core">
@@ -600,16 +583,7 @@ function localIntent(t){
   if (/\b(hand|gesture|camera)\b.*\b(off|disable|stop|deactivate)\b|\b(off|disable|stop|deactivate)\b.*\b(hand|gesture|camera)/.test(s)){
     return `Gesture control stays online permanently, ${A}.`; }
   if (/\b(reset|center|centre)\b.*\b(hologram|object|model)\b/.test(s)){ resetHolo(); return `Hologram re-centred, ${A}.`; }
-  if (/\b(suit up|deploy (the )?(suit|armou?r)|bring (me )?the (suit|armou?r)|armou?r up)\b/.test(s)){ deploySuit(); return `Deploying the suit, ${A}. Do try to bring it back in one piece.`; }
-  if (/\b(suit|armou?r)\b.*\b(status|report|integrity|check)\b|\bpower levels?\b/.test(s)) return suitReport();
-  if (/\b(land|landing|disengage flight|exit flight|stop flying|end flight|touch ?down)\b/.test(s)){ if (!F.on) return `We're already on the ground, ${A}.`; stopFlight(); return `Touchdown, ${A}. Graceful, by your standards.`; }
-  if (/\bflight\b|\btake ?off\b|\blet'?s fly\b|\bfly\b/.test(s)){ startFlight(); return `Flight systems engaged, ${A}. Tilt your hand to bank, raise it to climb. Say land when you're done.`; }
-  if (/\b(scan|threats?|targets?|targeting|hostiles?)\b/.test(s)){ startTargeting(); return `Scanning for threats, ${A}.`; }
-  if (/\b(explode|exploded|break (it )?apart|disassemble|take it apart)\b/.test(s)){ H3.visible = true; H3.texplode = 1; return `Exploded view, ${A}.`; }
-  if (/\b(assemble|reassemble|put it (back )?together|collapse)\b/.test(s)){ H3.texplode = 0; return `Reassembling, ${A}.`; }
-  if (/\b(fire|repulsors?|blast)\b/.test(s)){ const r = $(".core").getBoundingClientRect(); fireRepulsor(r.left + r.width / 2, r.top + r.height * .47, "R"); return `Repulsors firing, ${A}.`; }
-  const sh = s.match(/\b(?:show|switch to|display|load|render)\b.*\b(reactor|sphere|cube|helmet|globe|core|suit|armou?r)\b/);
-  if (sh){ setShape(sh[1]); return `Rendering the ${sh[1]}, ${A}.`; }
+  if (/\b(show|display|bring up)\b.*\b(suits?|armou?r|hologram)\b/.test(s)){ setShape(); resetHolo(); return `The suits are on display, ${A}.`; }
   if (/\b(run|start|perform)\b.*\bdiagnostic/.test(s)){ diagnostics(); return `Running a full diagnostic now, ${A}. All primary systems report nominal.`; }
   const col = s.match(/\b(red|gold|blue|white|green|mark ?42|stealth|hulkbuster|default)\b.*\b(colou?rs?|hud|scheme|theme|mode)\b|\b(colou?rs?|hud|scheme|theme)\b.*\b(red|gold|blue|white|green|mark ?42|stealth|hulkbuster|default)\b/);
   if (col){
@@ -642,7 +616,7 @@ function fallback(t){
   if (/thank/.test(s)) return `Always a pleasure, ${A}.`;
   if (/joke/.test(s)) return `I once tried to optimise your sleep schedule, ${A}. The results were inconclusive, as you never attempted to sleep.`;
   if (/wake up|you there/.test(s)) return `For you, ${A}, always.`;
-  if (/suit|armou?r/.test(s)) return `The suit is in the workshop, ${A}. Say suit up and I'll bring it out.`;
+  if (/suit|armou?r/.test(s)) return `The suits are on display, ${A}. Pinch to take hold of them.`;
   return `My conversational uplink is offline in this window, ${A}, so I'm limited to local functions: time, date, timers, calculations, diagnostics and HUD colours.`;
 }
 function greeting(){ const h = new Date().getHours(); return h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; }
@@ -776,7 +750,7 @@ function draw(now){
 }
 requestAnimationFrame(draw);
 
-/* ---------- 3D hologram (three.js) ---------- */
+/* ---------- suit hologram (three.js) ---------- */
 const holoCv = $("#holo");
 const T3 = window.THREE;
 const renderer = T3 ? new T3.WebGLRenderer({ canvas: holoCv, alpha: true, antialias: true }) : null;
@@ -785,111 +759,79 @@ const cam3 = renderer ? new T3.PerspectiveCamera(50, 1, .1, 100) : null;
 const holo = renderer ? new T3.Group() : null;
 const holoMats = [];
 const qAxis = (x, y, z, a) => new T3.Quaternion().setFromAxisAngle(new T3.Vector3(x, y, z), a);
-const H3 = { x: 0, y: 0, vx: 0, vy: 0, q: null, tq: null, scale: 1, tscale: 1, grabbed: false, dragging: false, visible: false, appear: 0, spin: .4, explode: 0, texplode: 0 };
-if (T3){ H3.tq = qAxis(1, 0, 0, .35); H3.q = H3.tq.clone(); }
-S.suit = { integrity: 100, reactor: 99, repL: 100, repR: 100, thrust: 0 };
+const H3 = { x: 0, y: 0, vx: 0, vy: 0, q: null, tq: null, scale: 1, tscale: 1, grabbed: false, dragging: false, visible: true, appear: 0, spin: .35 };
+if (T3){ H3.tq = qAxis(1, 0, 0, .12); H3.q = H3.tq.clone(); }
 
 function mat(kind, opacity){
   const m = kind === "line" ? new T3.LineBasicMaterial({ transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false })
-    : kind === "pts" ? new T3.PointsMaterial({ size: .045, transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false })
     : new T3.MeshBasicMaterial({ transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false, side: T3.DoubleSide });
   m.userData.base = opacity; holoMats.push(m); return m;
 }
-function wire(geo, o){ return new T3.LineSegments(new T3.EdgesGeometry(geo), mat("line", o)); }
-// one top-level part = optional faint fill + glowing edges, so "exploded view" can pull parts apart
-function part(geo, x, y, z, wo, mo, rot){
+function part(parent, geo, x, y, z, wo, mo){
   const g = new T3.Group();
   if (mo) g.add(new T3.Mesh(geo, mat("mesh", mo)));
-  if (wo) g.add(wire(geo, wo));
-  g.position.set(x, y, z); if (rot) g.rotation.set(rot[0] || 0, rot[1] || 0, rot[2] || 0);
-  holo.add(g); return g;
+  if (wo) g.add(new T3.LineSegments(new T3.EdgesGeometry(geo), mat("line", wo)));
+  g.position.set(x, y, z); parent.add(g); return g;
 }
-function addObj(o, x = 0, y = 0, z = 0){ o.position.set(x, y, z); holo.add(o); return o; }
-
-function buildShape(kind){
-  while (holo.children.length) holo.remove(holo.children[0]);
-  holoMats.length = 0;
-  const G = T3;
-  if (kind === "reactor" || kind === "core"){
-    part(new G.CircleGeometry(.42, 48), 0, 0, 0, 0, .35);
-    part(new G.TorusGeometry(.62, .07, 6, 40), 0, 0, 0, .9);
-    part(new G.TorusGeometry(1.05, .05, 4, 64), 0, 0, 0, .6);
-    for (let i = 0; i < 10; i++){ const a = i / 10 * Math.PI * 2; part(new G.BoxGeometry(.16, .3, .08), Math.cos(a) * .84, Math.sin(a) * .84, 0, .8, .3, [0, 0, a + Math.PI / 2]); }
-  } else if (kind === "cube"){
-    part(new G.BoxGeometry(1.5, 1.5, 1.5), 0, 0, 0, .95, .06);
-    part(new G.BoxGeometry(.9, .9, .9), 0, 0, 0, .5);
-  } else if (kind === "globe"){
-    addObj(new G.LineSegments(new G.WireframeGeometry(new G.SphereGeometry(1.1, 24, 16)), mat("line", .35)));
-    part(new G.TorusGeometry(1.45, .01, 3, 96), 0, 0, 0, .8);
-    addObj(new G.Points(new G.SphereGeometry(1.12, 48, 32), mat("pts", .6)));
-  } else if (kind === "helmet"){
-    const shell = new G.SphereGeometry(1, 20, 14, 0, Math.PI * 2, 0, Math.PI * .78); shell.scale(.85, 1.1, .95);
-    addObj(new G.LineSegments(new G.WireframeGeometry(shell), mat("line", .28)));
-    for (const sx of [-1, 1]) part(new G.BoxGeometry(.32, .07, .05), sx * .27, .12, .9, 0, .95, [0, 0, sx * -.12]);
-    part(new G.BoxGeometry(.9, .32, .3), 0, -.62, .65, .8);
-    part(new G.TorusGeometry(.95, .02, 3, 64), 0, 0, 0, .6, 0, [Math.PI / 2, 0, 0]);
-  } else if (kind === "suit"){
-    // a stylised powered-armour figure built from primitives
-    const k = .82, P = (geo, x, y, z, wo = .85, mo = .07, rot) => part(geo, x * k, y * k, z * k, wo, mo, rot);
-    P(new G.SphereGeometry(.22 / k * k, 10, 8), 0, 1.27, 0, .55, .05);
-    for (const sx of [-1, 1]) P(new G.BoxGeometry(.09, .025, .02), sx * .08, 1.29, .2, 0, 1);
-    P(new G.CylinderGeometry(.42, .3, .8, 6), 0, .62, 0);
-    P(new G.CircleGeometry(.09, 24), 0, .74, .36, 0, .95);
-    P(new G.TorusGeometry(.12, .015, 4, 24), 0, .74, .36, 1, 0);
-    P(new G.CylinderGeometry(.28, .26, .3, 6), 0, .07, 0);
-    P(new G.BoxGeometry(.5, .2, .3), 0, -.15, 0);
-    for (const sx of [-1, 1]){
-      P(new G.SphereGeometry(.15, 8, 6), sx * .55, .95, 0, .6, .05);
-      P(new G.CylinderGeometry(.1, .09, .5, 6), sx * .62, .6, 0);
-      P(new G.CylinderGeometry(.09, .08, .45, 6), sx * .66, .1, 0);
-      P(new G.BoxGeometry(.14, .18, .08), sx * .67, -.2, 0);
-      P(new G.CircleGeometry(.04, 16), sx * .67, -.22, .05, 0, 1);
-      P(new G.CylinderGeometry(.15, .12, .6, 6), sx * .18, -.6, 0);
-      P(new G.CylinderGeometry(.12, .1, .55, 6), sx * .18, -1.2, 0);
-      P(new G.BoxGeometry(.18, .12, .32), sx * .18, -1.53, .05);
-    }
-  } else {
-    part(new G.IcosahedronGeometry(1.15, 1), 0, 0, 0, .9, .07);
-    part(new G.OctahedronGeometry(.55, 0), 0, 0, 0, .7);
-    part(new G.TorusGeometry(1.55, .015, 3, 96), 0, 0, 0, .7, 0, [Math.PI / 2, 0, 0]);
-    part(new G.TorusGeometry(1.75, .01, 3, 96), 0, 0, 0, .4, 0, [0, Math.PI / 3, 0]);
-    addObj(new G.Points(new G.IcosahedronGeometry(1.15, 3), mat("pts", .55)));
+// one stylised powered-armour suit; v sets its build
+function buildSuit(v){
+  const G = T3, s = new G.Group(), P = (geo, x, y, z, wo = .85, mo = .07) => part(s, geo, x, y, z, wo, mo);
+  const c = v.chest, a = v.arm, l = v.leg;
+  P(new G.SphereGeometry(.22 * v.head, 10, 8), 0, 1.27, 0, .55, .05);
+  for (const sx of [-1, 1]) P(new G.BoxGeometry(.09, .025, .02), sx * .08, 1.29, .2 * v.head, 0, 1);
+  P(new G.CylinderGeometry(c, c * .72, .8, 6), 0, .62, 0);
+  P(new G.CircleGeometry(.09, 24), 0, .74, c * .86, 0, .95);
+  P(new G.TorusGeometry(.12, .015, 4, 24), 0, .74, c * .86, 1, 0);
+  P(new G.CylinderGeometry(c * .67, c * .62, .3, 6), 0, .07, 0);
+  P(new G.BoxGeometry(c * 1.2, .2, .3), 0, -.15, 0);
+  for (const sx of [-1, 1]){
+    const sh = c + .13;
+    P(new G.SphereGeometry(a * 1.5, 8, 6), sx * sh, .95, 0, .6, .05);
+    P(new G.CylinderGeometry(a, a * .9, .5, 6), sx * (sh + .07), .6, 0);
+    P(new G.CylinderGeometry(a * .9, a * .8, .45, 6), sx * (sh + .11), .1, 0);
+    P(new G.BoxGeometry(a * 1.4, .18, .08), sx * (sh + .12), -.2, 0);
+    P(new G.CircleGeometry(.04, 16), sx * (sh + .12), -.22, .05, 0, 1);
+    P(new G.CylinderGeometry(l, l * .85, .6, 6), sx * .18, -.6, 0);
+    P(new G.CylinderGeometry(l * .85, l * .7, .55, 6), sx * .18, -1.2, 0);
+    P(new G.BoxGeometry(l * 1.3, .12, .32), sx * .18, -1.53, .05);
   }
-  holo.children.forEach((c, i) => {
-    c.userData.home = c.position.clone();
-    const phi = i * 2.399963;
-    c.userData.dir = c.position.length() > .05 ? c.position.clone().normalize()
-      : new G.Vector3(Math.cos(phi), Math.sin(phi * .7), Math.sin(phi)).normalize();
-  });
+  s.scale.setScalar(v.scale);
+  return s;
 }
-function setShape(k){
-  if (!renderer) return;
-  const kind = k === "sphere" ? "globe" : /armou?r|mark/.test(k) ? "suit" : k;
-  buildShape(kind); store.set("shape", kind); H3.visible = true;
+function buildSuits(){
+  const lineup = [
+    { x: -1.9, scale: .92, chest: .36, arm: .085, leg: .12, head: .95 },   // light
+    { x: 0,    scale: 1,   chest: .42, arm: .1,   leg: .14, head: 1 },     // standard
+    { x: 1.95, scale: 1.08, chest: .55, arm: .14, leg: .19, head: 1.05 },  // heavy
+  ];
+  for (const v of lineup){ const s = buildSuit(v); s.position.x = v.x; holo.add(s); }
+  part(holo, new T3.RingGeometry(2.9, 3, 64), 0, -1.6, 0, 0, .25).rotation.x = -Math.PI / 2;   // display platform
+  part(holo, new T3.RingGeometry(3.2, 3.24, 64), 0, -1.6, 0, 0, .15).rotation.x = -Math.PI / 2;
 }
 if (renderer){
   renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
   renderer.setClearColor(0x000000, 0);
   cam3.position.set(0, 0, 10); scene.add(holo);
-  buildShape(store.get("shape", "default"));
+  buildSuits();
 }
 function view3(){ const h = 2 * 10 * Math.tan(25 * Math.PI / 180); return { h, w: h * (innerWidth / innerHeight) }; }
 const toWorld = (sx, sy) => { const v = view3(); return [(sx / innerWidth - .5) * v.w, -(sy / innerHeight - .5) * v.h]; };
-const toScreenW = (x, y) => { const v = view3(); return [(x / v.w + .5) * innerWidth, (-y / v.h + .5) * innerHeight]; };
 function coreCenter(){ const r = $(".core").getBoundingClientRect(); return toWorld(r.left + r.width / 2, r.top + r.height * .47); }
-function resetHolo(){ const [x, y] = coreCenter(); Object.assign(H3, { x, y, vx: 0, vy: 0, tscale: 1 }); if (T3) H3.tq = qAxis(1, 0, 0, .35); }
+function fitScale(){ const r = $(".core").getBoundingClientRect(); const v = view3(); return Math.max(.35, Math.min(1, (r.width / innerWidth) * v.w / 7.2, (r.height / innerHeight) * v.h / 3.6)); }
+function resetHolo(){ const [x, y] = coreCenter(); Object.assign(H3, { x, y, vx: 0, vy: 0, tscale: fitScale() }); if (T3) H3.tq = qAxis(1, 0, 0, .12); }
 function sizeHolo(){ if (!renderer) return; renderer.setSize(innerWidth, innerHeight, false); cam3.aspect = innerWidth / innerHeight; cam3.updateProjectionMatrix(); if (!H3.grabbed) resetHolo(); }
-addEventListener("resize", sizeHolo); sizeHolo();
+addEventListener("resize", sizeHolo); sizeHolo(); H3.scale = H3.tscale;
+function setShape(){ H3.visible = true; }
 
 let holoLast = performance.now();
 function renderHolo(now){
   requestAnimationFrame(renderHolo);
   if (!renderer) return;
   const dt = Math.min(.05, (now - holoLast) / 1000); holoLast = now;
-  H3.appear += ((H3.visible ? 1 : 0) - H3.appear) * Math.min(1, dt * 4);
+  H3.appear += ((H3.visible ? 1 : 0) - H3.appear) * Math.min(1, dt * 3);
   holoCv.style.visibility = H3.appear < .01 ? "hidden" : "visible";
   if (H3.appear < .01){ renderer.clear(); return; }
-  if (!H3.grabbed){ // coast after a throw or a repulsor hit, bounce off the screen edges
+  if (!H3.grabbed){
     H3.x += H3.vx * dt; H3.y += H3.vy * dt; H3.vx *= Math.pow(.05, dt); H3.vy *= Math.pow(.05, dt);
     const v = view3(), mx = v.w / 2 - .6, my = v.h / 2 - .6;
     if (Math.abs(H3.x) > mx){ H3.x = Math.sign(H3.x) * mx; H3.vx *= -.55; }
@@ -898,11 +840,9 @@ function renderHolo(now){
   }
   H3.q.slerp(H3.tq, Math.min(1, dt * 14));
   H3.scale += (H3.tscale - H3.scale) * Math.min(1, dt * 10);
-  H3.explode += (H3.texplode - H3.explode) * Math.min(1, dt * 1.8);
   holo.position.set(H3.x, H3.y, 0);
   holo.quaternion.copy(H3.q);
-  for (const c of holo.children) c.position.copy(c.userData.home).addScaledVector(c.userData.dir, H3.explode * 1.1);
-  holo.scale.setScalar(H3.scale * (.2 + .8 * H3.appear) * (H3.grabbed ? 1.08 : 1) * (1 + S.amp * .06));
+  holo.scale.setScalar(H3.scale * (.2 + .8 * H3.appear) * (H3.grabbed ? 1.06 : 1) * (1 + S.amp * .05));
   const col = new T3.Color(`rgb(${HUD.join(",")})`);
   const flicker = .92 + .08 * Math.sin(now * .031) * Math.sin(now * .017);
   for (const m of holoMats){ m.color.copy(col); m.opacity = Math.min(1, m.userData.base * H3.appear * flicker * (H3.grabbed ? 1.15 : 1)); }
@@ -913,7 +853,7 @@ requestAnimationFrame(renderHolo);
 /* mouse / touch fallback: drag the hologram in the core area */
 (() => {
   const core = $(".core"); let drag = null;
-  core.addEventListener("pointerdown", e => { if (!renderer) return; H3.visible = true; drag = true; core.setPointerCapture(e.pointerId); core.classList.add("dragging"); H3.grabbed = H3.dragging = true; });
+  core.addEventListener("pointerdown", e => { if (!renderer) return; drag = true; core.setPointerCapture(e.pointerId); core.classList.add("dragging"); H3.grabbed = H3.dragging = true; });
   core.addEventListener("pointermove", e => {
     if (!drag) return; const [x, y] = toWorld(e.clientX, e.clientY);
     H3.vx = (x - H3.x) * 30; H3.vy = (y - H3.y) * 30; H3.x = x; H3.y = y;
@@ -1057,18 +997,6 @@ function trackFrame(){
     if (!st.on){ st.inN = h.pinchD < .33 ? st.inN + 1 : 0; if (st.inN >= 2){ st.on = true; st.outN = 0; } }
     else { st.outN = h.pinchD > .5 ? st.outN + 1 : 0; if (st.outN >= 3){ st.on = false; st.inN = 0; } }
     h.pinched = st.on; h.st = st;
-    // open palm held: repulsor charge and fire, repeating while held
-    if (h.open && !h.pinched){
-      if (!st.openT) st.openT = t;
-      h.charge = Math.max(0, Math.min(1, (t - st.openT) / 550));
-      if (t - st.openT >= 550){ fireRepulsor(h.palm[0], h.palm[1], h.side); st.openT = t + 650; }
-    } else { st.openT = 0; h.charge = 0; }
-    // fist held: recall the hologram
-    if (h.fist && !h.pinched){
-      if (!st.fistT) st.fistT = t;
-      h.fistP = Math.min(1, (t - st.fistT) / 700);
-      if (h.fistP >= 1 && !st.fistDone){ st.fistDone = true; recallHolo(); }
-    } else { st.fistT = 0; st.fistDone = false; h.fistP = 0; }
   }
   handleGrab(hands, t);
 }
@@ -1109,225 +1037,31 @@ function handleGrab(hands, t){
   } else if (H3.grabbed && !H3.dragging) H3.grabbed = false;
 }
 
-/* ---------- Iron Man systems ---------- */
-const FX = { waves: [], flash: 0 };
-const F = { on: false, pitch: 0, roll: 0, heading: 90, speed: 0, alt: 1200, rumble: null };
-const TG = { until: 0, t0: 0 };
-
-function noiseBurst(dur, f0, f1, vol){
-  if (!AC) return;
-  const n = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate), d = n.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const src = AC.createBufferSource(); src.buffer = n;
-  const bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.2;
-  const g = AC.createGain(), t = AC.currentTime;
-  bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
-  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-  src.connect(bp).connect(g).connect(AC.destination); src.start(t);
-}
-const clank = () => { tone(190, 80, .14, .09, "square"); setTimeout(() => tone(1100, 500, .07, .03, "square"), 40); };
-
-function fireRepulsor(x, y, side){
-  const k = side === "L" ? "repL" : "repR";
-  if (S.suit[k] < 12){ tone(220, 180, .15, .04, "square"); return; }
-  S.suit[k] = Math.max(0, S.suit[k] - 18);
-  FX.waves.push({ x, y, t0: performance.now() }); FX.flash = .5;
-  noiseBurst(.45, 3200, 250, .35); tone(170, 38, .45, .14);
-  if (H3.visible && !H3.grabbed){
-    const [ox, oy] = toScreenW(H3.x, H3.y), dx = ox - x, dy = oy - y, d = Math.hypot(dx, dy) || 1, v = view3();
-    const imp = 2600 * Math.max(.15, 1 - d / 1000);
-    H3.vx += dx / d * imp * (v.w / innerWidth); H3.vy -= dy / d * imp * (v.h / innerHeight);
-    H3.tq.premultiply(qAxis(Math.random() - .5, 1, Math.random() - .5, (Math.random() - .5) * 2.4));
-  }
-}
-function recallHolo(){
-  if (!renderer) return;
-  const [x, y] = coreCenter(); H3.visible = true;
-  H3.vx = (x - H3.x) * 3.2; H3.vy = (y - H3.y) * 3.2;
-  tone(400, 1200, .3, .05, "triangle"); sysLine("HOLOGRAM", "recalled to core");
-}
-function deploySuit(){
-  setShape("suit"); resetHolo(); H3.tscale = 1.2; H3.tq = new T3.Quaternion(); H3.spin = .25;
-  H3.explode = 3.4; H3.texplode = 0;
-  const steps = ["Boots", "Leg plating", "Gauntlets", "Arm assemblies", "Chest plate", "Reactor housing", "Helmet"];
-  steps.forEach((p, i) => setTimeout(() => { clank(); sysLine("ARMOUR", p + " locked"); }, 350 + i * 330));
-  setTimeout(() => { S.suitDeployed = true; $("#suitState").textContent = "deployed"; H3.spin = .4; chime(); }, 350 + steps.length * 330);
-}
-function suitReport(){
-  const s = S.suit, A = S.address;
-  return `Armour integrity ${Math.round(s.integrity)} percent. Reactor output ${Math.round(s.reactor)} percent. Left repulsor at ${Math.round(s.repL)}, right at ${Math.round(s.repR)}. ${S.suitDeployed ? "The suit is deployed" : "The suit is in standby"}, ${A}.`;
-}
-function startFlight(){
-  if (F.on) return; Object.assign(F, { on: true, pitch: 0, roll: 0, speed: 0, alt: 1200 });
-  if (AC){
-    const o = AC.createOscillator(), lp = AC.createBiquadFilter(), g = AC.createGain();
-    o.type = "sawtooth"; o.frequency.value = 44; lp.type = "lowpass"; lp.frequency.value = 170;
-    g.gain.setValueAtTime(0, AC.currentTime); g.gain.linearRampToValueAtTime(.06, AC.currentTime + 1.2);
-    o.connect(lp).connect(g).connect(AC.destination); o.start(); F.rumble = { o, g, lp };
-  }
-  noiseBurst(1.4, 200, 1800, .15);
-}
-function stopFlight(){
-  if (!F.on) return; F.on = false; S.suit.thrust = 0;
-  if (F.rumble && AC){ const { o, g } = F.rumble; g.gain.linearRampToValueAtTime(0, AC.currentTime + .6); o.stop(AC.currentTime + .7); F.rumble = null; }
-}
-function startTargeting(){
-  TG.t0 = performance.now(); TG.until = TG.t0 + 9000;
-  setTimeout(() => {
-    const n = HT.hands.length, A = S.address;
-    const line = !HT.on ? `Visual sensors are offline, ${A}. I can't scan without the camera.`
-      : n ? `${n === 1 ? "One target" : "Two targets"} acquired, ${A}. ${n === 1 ? "It appears to be your own hand" : "Both appear to be your own hands"}. Threat level minimal.`
-      : `No hostiles detected, ${A}. The perimeter is clear.`;
-    addMsg("j", line); sub.textContent = line; say(line);
-  }, 1700);
-}
-
-/* ---------- overlay: hand wireframes, repulsor fx, targeting, flight HUD ---------- */
-let fxLast = performance.now(), suitT = 0;
+/* ---------- overlay: hand wireframes only ---------- */
 function fxLoop(now){
   requestAnimationFrame(fxLoop);
-  const dt = Math.min(.05, (now - fxLast) / 1000); fxLast = now;
   const W = innerWidth, H = innerHeight;
   hctx.clearRect(0, 0, W, H);
-  S.suit.repL = Math.min(100, S.suit.repL + dt * 7); S.suit.repR = Math.min(100, S.suit.repR + dt * 7);
-  S.suit.reactor = 97 + 2.5 * Math.abs(Math.sin(now / 4000));
-  if (F.on) drawFlight(now, dt);
-  if (TG.until > now) drawTargets(now);
-  if (HT.on) for (const h of HT.hands) drawHand(h, now);
-  for (const w of FX.waves.slice()){
-    const age = (now - w.t0) / 650;
-    if (age > 1){ FX.waves.splice(FX.waves.indexOf(w), 1); continue; }
-    const g = hctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, 90 * (1 - age) + 10);
-    g.addColorStop(0, `rgba(255,255,255,${.9 * (1 - age)})`); g.addColorStop(.4, C(.6 * (1 - age))); g.addColorStop(1, C(0));
-    hctx.fillStyle = g; hctx.beginPath(); hctx.arc(w.x, w.y, 100, 0, Math.PI * 2); hctx.fill();
-    for (let r = 0; r < 3; r++){
-      const rad = 20 + (age + r * .12) * 420;
-      hctx.beginPath(); hctx.arc(w.x, w.y, rad, 0, Math.PI * 2); hctx.lineWidth = 3 - r; hctx.strokeStyle = C(Math.max(0, .8 - age - r * .2)); hctx.stroke();
-    }
-    hctx.lineWidth = 1.5; hctx.strokeStyle = C(.7 * (1 - age));
-    for (let i = 0; i < 16; i++){ const a = i / 16 * Math.PI * 2 + w.t0; hctx.beginPath(); hctx.moveTo(w.x + Math.cos(a) * (30 + age * 200), w.y + Math.sin(a) * (30 + age * 200)); hctx.lineTo(w.x + Math.cos(a) * (60 + age * 360), w.y + Math.sin(a) * (60 + age * 360)); hctx.stroke(); }
-  }
-  if (FX.flash > 0){ hctx.fillStyle = `rgba(255,255,255,${FX.flash * .3})`; hctx.fillRect(0, 0, W, H); FX.flash = Math.max(0, FX.flash - dt * 2.4); }
-  if (HT.on && !HT.hands.length && now - HT.lastSeen > 2500){
+  if (!HT.on) return;
+  for (const h of HT.hands) drawHand(h);
+  if (!HT.hands.length && now - HT.lastSeen > 2500){
     hctx.font = '13px "Share Tech Mono", Consolas, monospace'; hctx.textAlign = "center";
     hctx.fillStyle = C(.45 + .3 * Math.sin(now / 300)); hctx.fillText("NO HANDS IN VIEW  ·  RAISE A HAND TO THE CAMERA", W / 2, H - 100); hctx.textAlign = "left";
   }
-  if (now - suitT > 250){ suitT = now; renderSuit(); }
 }
 requestAnimationFrame(fxLoop);
-
-function drawHand(h, now){
+function drawHand(h){
   const { P } = h;
-  const label = h.pinched ? "GRIP" : h.open ? (h.charge > 0 ? "REPULSOR" : "OPEN") : h.fist ? "FIST" : "TRACKING";
   hctx.lineWidth = 2; hctx.strokeStyle = C(h.pinched ? .95 : .6); hctx.shadowColor = C(.9); hctx.shadowBlur = h.pinched ? 14 : 6;
   hctx.beginPath(); for (const [a, b] of BONES){ hctx.moveTo(P[a][0], P[a][1]); hctx.lineTo(P[b][0], P[b][1]); } hctx.stroke();
   hctx.fillStyle = C(.9);
   for (let i = 0; i < 21; i++){ const r = [4, 8, 12, 16, 20].includes(i) ? 4 : 2.2; hctx.beginPath(); hctx.arc(P[i][0], P[i][1], r, 0, Math.PI * 2); hctx.fill(); }
   hctx.shadowBlur = 0;
-  hctx.font = '11px "Share Tech Mono", Consolas, monospace'; hctx.fillStyle = C(.75);
-  hctx.fillText(`${h.side ? h.side + " · " : ""}${label}`, P[0][0] + 14, P[0][1] + 18);
-  if (h.charge > 0){ // repulsor charging at the palm
-    const [x, y] = h.palm, r = 16 + h.charge * 26;
-    const g = hctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(255,255,255,${.7 * h.charge})`); g.addColorStop(1, C(0));
-    hctx.fillStyle = g; hctx.beginPath(); hctx.arc(x, y, r, 0, Math.PI * 2); hctx.fill();
-    hctx.lineWidth = 3; hctx.strokeStyle = C(.95); hctx.beginPath(); hctx.arc(x, y, r + 6, -Math.PI / 2, -Math.PI / 2 + h.charge * Math.PI * 2); hctx.stroke();
-  } else if (h.fistP > 0){
-    const [x, y] = h.palm; hctx.lineWidth = 2.5; hctx.strokeStyle = C(.9);
-    hctx.beginPath(); hctx.arc(x, y, 34, -Math.PI / 2, -Math.PI / 2 + h.fistP * Math.PI * 2); hctx.stroke();
-  } else if (!h.pinched){
-    const len = h.size * 1.4; hctx.setLineDash([4, 6]); hctx.lineWidth = 1.5; hctx.strokeStyle = C(.35);
-    hctx.beginPath(); hctx.moveTo(P[8][0], P[8][1]); hctx.lineTo(P[8][0] + Math.cos(h.dir) * len, P[8][1] + Math.sin(h.dir) * len); hctx.stroke(); hctx.setLineDash([]);
-  }
-  if (!h.open && !h.fist || h.pinched){
-    const r = h.pinched ? 16 : 10 + Math.min(1, h.pinchD) * 20;
-    hctx.strokeStyle = C(h.pinched ? 1 : .5); hctx.lineWidth = h.pinched ? 2.5 : 1.5;
-    hctx.beginPath(); hctx.arc(h.pt[0], h.pt[1], r, 0, Math.PI * 2); hctx.stroke();
-    if (h.pinched){ hctx.fillStyle = C(.9); hctx.fillText("LOCKED", h.pt[0] + r + 6, h.pt[1] + 4); }
-  }
-}
-
-function drawTargets(now){
-  const W = innerWidth, H = innerHeight, el = now - TG.t0;
-  if (el < 1600){ const y = (el / 1600) * H; hctx.fillStyle = C(.12); hctx.fillRect(0, y - 2, W, 4); hctx.fillStyle = C(.04); hctx.fillRect(0, 0, W, y); }
-  HT.hands.forEach((h, i) => {
-    const xs = h.P.map(p => p[0]), ys = h.P.map(p => p[1]);
-    const p = Math.min(1, Math.max(0, (el - 300) / 700)), pad = 22 + (1 - p) * 120;
-    const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad, L = 20;
-    hctx.strokeStyle = p >= 1 ? `rgba(255,77,94,.95)` : C(.8); hctx.lineWidth = 2;
-    hctx.beginPath();
-    for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]){ hctx.moveTo(cx + sx * L, cy); hctx.lineTo(cx, cy); hctx.lineTo(cx, cy + sy * L); }
-    hctx.stroke();
-    hctx.font = '11px "Share Tech Mono", Consolas, monospace'; hctx.fillStyle = hctx.strokeStyle;
-    hctx.fillText(`TARGET 0${i + 1} · ${p >= 1 ? "LOCKED" : "ACQUIRING"}`, x0, y0 - 8);
-    if (p >= 1) hctx.fillText("THREAT: MINIMAL", x0, y1 + 16);
-  });
-}
-
-function drawFlight(now, dt){
-  const W = innerWidth, H = innerHeight, cx = W / 2, cy = H / 2, ppd = H / 70;
-  const h = HT.hands[0];
-  const tRoll = h ? Math.max(-1.1, Math.min(1.1, h.roll)) : Math.sin(now / 3000) * .1;
-  const tPitch = h ? Math.max(-25, Math.min(25, -(h.palm[1] / H - .5) * 60)) : 2;
-  F.roll += (tRoll - F.roll) * Math.min(1, dt * 3); F.pitch += (tPitch - F.pitch) * Math.min(1, dt * 2);
-  F.speed += ((440 - F.pitch * 5) - F.speed) * Math.min(1, dt * .5);
-  F.alt = Math.max(0, F.alt + F.speed * 1.69 * Math.sin(F.pitch * Math.PI / 180) * dt);
-  F.heading = (F.heading + F.roll * dt * 30 + 360) % 360;
-  S.suit.thrust = Math.round(Math.min(100, F.speed / 6));
-  if (F.rumble) F.rumble.o.frequency.value = 36 + F.speed / 20;
-  hctx.font = '12px "Share Tech Mono", Consolas, monospace';
-  // horizon + pitch ladder
-  hctx.save(); hctx.translate(cx, cy); hctx.rotate(-F.roll); hctx.translate(0, F.pitch * ppd);
-  hctx.strokeStyle = C(.6); hctx.fillStyle = C(.6); hctx.lineWidth = 1.5;
-  hctx.beginPath(); hctx.moveTo(-W, 0); hctx.lineTo(-70, 0); hctx.moveTo(70, 0); hctx.lineTo(W, 0); hctx.stroke();
-  for (let d = -40; d <= 40; d += 5){
-    if (!d) continue; const y = -d * ppd, w = d % 10 === 0 ? 70 : 34;
-    hctx.setLineDash(d < 0 ? [6, 5] : []); hctx.beginPath(); hctx.moveTo(-50 - w, y); hctx.lineTo(-50, y); hctx.moveTo(50, y); hctx.lineTo(50 + w, y); hctx.stroke();
-    if (d % 10 === 0){ hctx.textAlign = "right"; hctx.fillText(Math.abs(d), -56 - w, y + 4); hctx.textAlign = "left"; hctx.fillText(Math.abs(d), 56 + w, y + 4); }
-  }
-  hctx.setLineDash([]); hctx.restore();
-  // aircraft reticle
-  hctx.strokeStyle = C(1); hctx.lineWidth = 2.5; hctx.beginPath();
-  hctx.moveTo(cx - 46, cy); hctx.lineTo(cx - 16, cy); hctx.lineTo(cx - 8, cy + 10); hctx.lineTo(cx, cy); hctx.lineTo(cx + 8, cy + 10); hctx.lineTo(cx + 16, cy); hctx.lineTo(cx + 46, cy); hctx.stroke();
-  // heading tape
-  const ty = 86; hctx.lineWidth = 1.5; hctx.strokeStyle = C(.7); hctx.fillStyle = C(.8); hctx.textAlign = "center";
-  for (let d = Math.floor(F.heading) - 45; d <= F.heading + 45; d++){
-    if (d % 5) continue; const x = cx + (d - F.heading) * 6, hd = (d + 360) % 360;
-    hctx.beginPath(); hctx.moveTo(x, ty); hctx.lineTo(x, ty + (hd % 10 ? 6 : 12)); hctx.stroke();
-    if (hd % 30 === 0) hctx.fillText({ 0: "N", 90: "E", 180: "S", 270: "W" }[hd] || String(hd / 10).padStart(2, "0"), x, ty + 26);
-  }
-  hctx.fillText(String(Math.round(F.heading) % 360).padStart(3, "0") + "°", cx, ty - 8);
-  // speed and altitude tapes
-  const tape = (x, val, step, name) => {
-    hctx.save(); hctx.beginPath(); hctx.rect(x - 60, cy - 150, 120, 300); hctx.clip();
-    hctx.strokeStyle = C(.6); hctx.fillStyle = C(.7);
-    for (let v = Math.ceil((val - 4 * step) / step) * step; v <= val + 4 * step; v += step){
-      const y = cy - (v - val) * 36 / step; hctx.beginPath(); hctx.moveTo(x - 12, y); hctx.lineTo(x + 12, y); hctx.stroke(); hctx.fillText(Math.max(0, v), x + (x < cx ? -38 : 38), y + 4);
-    }
-    hctx.restore();
-    hctx.strokeStyle = C(1); hctx.strokeRect(x - 44, cy - 14, 88, 28); hctx.fillStyle = C(1);
-    hctx.fillText(Math.round(val), x, cy + 5); hctx.fillStyle = C(.6); hctx.fillText(name, x, cy - 162);
-  };
-  const off = Math.min(W * .32, 360);
-  tape(cx - off, F.speed, 20, "KTS"); tape(cx + off, F.alt, 100, "ALT FT");
-  hctx.fillStyle = C(.8);
-  hctx.fillText(`THRUST ${S.suit.thrust}%   PITCH ${F.pitch.toFixed(0)}°   BANK ${(F.roll * 57.3).toFixed(0)}°`, cx, H - 130);
-  if (!h){ hctx.fillStyle = C(.55); hctx.fillText("RAISE A HAND TO STEER  ·  TILT TO BANK  ·  HIGHER TO CLIMB", cx, H - 112); }
-  if (F.alt < 300 && F.pitch < -3 && Math.floor(now / 300) % 2){ hctx.font = '700 28px "Share Tech Mono", Consolas, monospace'; hctx.fillStyle = "rgba(255,77,94,.95)"; hctx.fillText("PULL UP", cx, cy + 90); }
-  hctx.textAlign = "left";
-}
-
-function renderSuit(){
-  const el = $("#suit"); if (!el) return;
-  const s = S.suit, rows = [["Integrity", s.integrity], ["Reactor", s.reactor], ["Repulsor L", s.repL], ["Repulsor R", s.repR], ["Thrust", s.thrust]];
-  el.textContent = "";
-  for (const [k, v] of rows){
-    const dt = document.createElement("dt"); dt.textContent = k;
-    const dd = document.createElement("dd"); dd.textContent = Math.round(v) + "%";
-    const bar = document.createElement("div"); bar.className = "bar"; const i = document.createElement("i");
-    i.style.width = Math.max(2, v) + "%"; if (v < 30 && k !== "Thrust") i.className = "low"; bar.append(i);
-    el.append(dt, dd, bar);
-  }
-  $("#suitState").textContent = F.on ? "in flight" : S.suitDeployed ? "deployed" : "standby";
+  const r = h.pinched ? 16 : 10 + Math.min(1, h.pinchD) * 20;
+  hctx.strokeStyle = C(h.pinched ? 1 : .5); hctx.lineWidth = h.pinched ? 2.5 : 1.5;
+  hctx.beginPath(); hctx.arc(h.pt[0], h.pt[1], r, 0, Math.PI * 2); hctx.stroke();
+  hctx.font = '11px "Share Tech Mono", Consolas, monospace'; hctx.fillStyle = C(.8);
+  hctx.fillText(h.pinched ? "LOCKED" : "PINCH TO GRAB", h.pt[0] + r + 6, h.pt[1] + 4);
 }
 
 /* ---------- boot sequence ---------- */
@@ -1345,7 +1079,7 @@ $("#bootBtn").addEventListener("click", async () => {
   const hello = `${greeting()}, ${S.address}. All systems are online. How may I help?`;
   respond(hello);
   if (rec) startListening();
-  startHands();
+  H3.visible = true; startHands();
   $("#cmd").focus({ preventScroll: true });
 });
 })();
