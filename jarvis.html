@@ -99,6 +99,11 @@ footer{padding-block:12px 14px;border-top:1px solid rgba(var(--hud-rgb),.18)}
 header,main,footer{position:relative;z-index:2}
 #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:0;filter:grayscale(1) contrast(1.15) brightness(.8);z-index:0;transition:opacity .8s;pointer-events:none}
 #cam.on{opacity:0}
+#scanBox{position:fixed;left:50%;top:50%;transform:translate(-50%,-55%);z-index:15;display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--bg);border:1px solid var(--hud);box-shadow:0 0 30px rgba(var(--hud-rgb),.35);padding:10px;max-width:calc(100vw - 32px)}
+#scanCv{display:block;width:min(320px,80vw);height:auto;filter:grayscale(1) contrast(1.1) brightness(.9)}
+#scanCount{position:absolute;top:10px;left:10px;right:10px;bottom:38px;display:grid;place-items:center;font:700 64px var(--font-display);color:var(--hud);text-shadow:0 0 20px var(--hud);pointer-events:none}
+#scanBox p{margin:0;font-family:var(--font-data);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 #holo,#hands{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 #holo{z-index:5;visibility:hidden;background:transparent} #hands{z-index:6}
 .core{cursor:grab}
@@ -190,6 +195,9 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
       <div class="hint">
         <b class="hud-c">Pinch</b> grab, move and rotate the suits<br>
         <b class="hud-c">Both hands pinch</b> resize and twist<br>
+        <b class="hud-c">Scan</b> photo an object to make it a wireframe<br>
+        <q>Exploded view</q> / <q>Assemble</q><br>
+        <q>Show the suits</q> / <q>Show the scan</q><br>
         <q>Reset the hologram</q><br>
         <q>Switch to Mark 42 colours</q>
       </div>
@@ -208,6 +216,7 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
 </main>
 
 <video id="cam" playsinline muted></video>
+<div id="scanBox" hidden><canvas id="scanCv" width="320" height="240"></canvas><div id="scanCount">3</div><p>Hold the object in the brackets</p></div>
 <canvas id="holo" aria-hidden="true"></canvas>
 <canvas id="hands" aria-hidden="true"></canvas>
 
@@ -218,7 +227,10 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
     </button>
     <input id="cmd" type="text" placeholder="Speak or type a command…" aria-label="Command">
     <button class="btn" type="submit">Send</button>
-    <button class="btn" type="button" id="handBtn" aria-pressed="false" title="Pinch with thumb and index finger to grab the hologram">Hands</button>
+    <button class="btn" type="button" id="scanBtn" title="Take a photo of an object and turn it into a wireframe hologram">Scan</button>
+    <button class="btn" type="button" id="upBtn" title="Turn a photo into a wireframe hologram">Upload</button>
+    <input type="file" id="photoIn" accept="image/*" hidden>
+    <button class="btn hide-sm" type="button" id="handBtn" aria-pressed="false" title="Pinch with thumb and index finger to grab the hologram">Hands</button>
     <button class="btn hide-sm" type="button" id="muteBtn" aria-pressed="false">Mute</button>
   </form>
 </footer>
@@ -583,7 +595,11 @@ function localIntent(t){
   if (/\b(hand|gesture|camera)\b.*\b(off|disable|stop|deactivate)\b|\b(off|disable|stop|deactivate)\b.*\b(hand|gesture|camera)/.test(s)){
     return `Gesture control stays online permanently, ${A}.`; }
   if (/\b(reset|center|centre)\b.*\b(hologram|object|model)\b/.test(s)){ resetHolo(); return `Hologram re-centred, ${A}.`; }
-  if (/\b(show|display|bring up)\b.*\b(suits?|armou?r|hologram)\b/.test(s)){ setShape(); resetHolo(); return `The suits are on display, ${A}.`; }
+  if (/\b(show|display|bring up)\b.*\b(scan|scanned|object)\b/.test(s)){ if (!lastScan) return `There's no scan yet, ${A}. Say take a photo, or press Scan.`; showScan(lastScan); return `Here's your last scan, ${A}.`; }
+  if (/\b(scan|photo|picture|capture|snapshot)\b/.test(s)){ startScan(); return `Hold it up to the camera, ${A}. Scanning in three seconds.`; }
+  if (/\b(explode|exploded|break (it|them) apart|disassemble|take (it|them) apart)\b/.test(s)){ H3.visible = true; H3.texplode = 1; return `Exploded view, ${A}.`; }
+  if (/\b(assemble|reassemble|put (it|them) (back )?together|collapse)\b/.test(s)){ H3.texplode = 0; return `Reassembling, ${A}.`; }
+  if (/\b(show|display|bring up)\b.*\b(suits?|armou?r|hologram)\b/.test(s)){ setShape(); return `The suits are on display, ${A}.`; }
   if (/\b(run|start|perform)\b.*\bdiagnostic/.test(s)){ diagnostics(); return `Running a full diagnostic now, ${A}. All primary systems report nominal.`; }
   const col = s.match(/\b(red|gold|blue|white|green|mark ?42|stealth|hulkbuster|default)\b.*\b(colou?rs?|hud|scheme|theme|mode)\b|\b(colou?rs?|hud|scheme|theme)\b.*\b(red|gold|blue|white|green|mark ?42|stealth|hulkbuster|default)\b/);
   if (col){
@@ -750,20 +766,22 @@ function draw(now){
 }
 requestAnimationFrame(draw);
 
-/* ---------- suit hologram (three.js) ---------- */
+/* ---------- hologram (three.js): suit lineup or a scanned object ---------- */
 const holoCv = $("#holo");
 const T3 = window.THREE;
 const renderer = T3 ? new T3.WebGLRenderer({ canvas: holoCv, alpha: true, antialias: true }) : null;
 const scene = renderer ? new T3.Scene() : null;
 const cam3 = renderer ? new T3.PerspectiveCamera(50, 1, .1, 100) : null;
 const holo = renderer ? new T3.Group() : null;
-const holoMats = [];
+const holoMats = [], EXP = [];   // EXP: parts that move apart in exploded view
 const qAxis = (x, y, z, a) => new T3.Quaternion().setFromAxisAngle(new T3.Vector3(x, y, z), a);
-const H3 = { x: 0, y: 0, vx: 0, vy: 0, q: null, tq: null, scale: 1, tscale: 1, grabbed: false, dragging: false, visible: true, appear: 0, spin: .35 };
+const H3 = { x: 0, y: 0, vx: 0, vy: 0, q: null, tq: null, scale: 1, tscale: 1, grabbed: false, dragging: false, visible: true, appear: 0, spin: .35,
+  explode: 0, texplode: 0, dims: { w: 7.2, h: 3.6 }, content: "suits" };
 if (T3){ H3.tq = qAxis(1, 0, 0, .12); H3.q = H3.tq.clone(); }
 
 function mat(kind, opacity){
   const m = kind === "line" ? new T3.LineBasicMaterial({ transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false })
+    : kind === "pts" ? new T3.PointsMaterial({ size: .035, transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false })
     : new T3.MeshBasicMaterial({ transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false, side: T3.DoubleSide });
   m.userData.base = opacity; holoMats.push(m); return m;
 }
@@ -773,6 +791,14 @@ function part(parent, geo, x, y, z, wo, mo){
   if (wo) g.add(new T3.LineSegments(new T3.EdgesGeometry(geo), mat("line", wo)));
   g.position.set(x, y, z); parent.add(g); return g;
 }
+function clearHolo(){
+  holo.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  while (holo.children.length) holo.remove(holo.children[0]);
+  holoMats.forEach(m => m.dispose()); holoMats.length = 0; EXP.length = 0;
+  H3.explode = H3.texplode = 0;
+}
+function addExp(obj, dir, k){ EXP.push({ obj, home: obj.position.clone(), dir: dir.normalize(), k }); }
+
 // one stylised powered-armour suit; v sets its build
 function buildSuit(v){
   const G = T3, s = new G.Group(), P = (geo, x, y, z, wo = .85, mo = .07) => part(s, geo, x, y, z, wo, mo);
@@ -795,6 +821,8 @@ function buildSuit(v){
     P(new G.CylinderGeometry(l * .85, l * .7, .55, 6), sx * .18, -1.2, 0);
     P(new G.BoxGeometry(l * 1.3, .12, .32), sx * .18, -1.53, .05);
   }
+  // each plate flies outward from the suit's centre in exploded view
+  for (const p of s.children){ const d = p.position.clone().sub(new G.Vector3(0, .1, 0)); addExp(p, d.length() > .05 ? d : new G.Vector3(0, 0, 1), .9); }
   s.scale.setScalar(v.scale);
   return s;
 }
@@ -804,10 +832,16 @@ function buildSuits(){
     { x: 0,    scale: 1,   chest: .42, arm: .1,   leg: .14, head: 1 },     // standard
     { x: 1.95, scale: 1.08, chest: .55, arm: .14, leg: .19, head: 1.05 },  // heavy
   ];
-  for (const v of lineup){ const s = buildSuit(v); s.position.x = v.x; holo.add(s); }
-  part(holo, new T3.RingGeometry(2.9, 3, 64), 0, -1.6, 0, 0, .25).rotation.x = -Math.PI / 2;   // display platform
+  for (const v of lineup){ const s = buildSuit(v); s.position.x = v.x; holo.add(s); if (v.x) addExp(s, new T3.Vector3(Math.sign(v.x), 0, 0), 1.4); }
+  part(holo, new T3.RingGeometry(2.9, 3, 64), 0, -1.6, 0, 0, .25).rotation.x = -Math.PI / 2;
   part(holo, new T3.RingGeometry(3.2, 3.24, 64), 0, -1.6, 0, 0, .15).rotation.x = -Math.PI / 2;
 }
+function showSuits(){
+  if (!renderer) return;
+  clearHolo(); buildSuits(); H3.content = "suits"; H3.dims = { w: 7.2, h: 3.6 }; H3.visible = true; resetHolo();
+}
+function setShape(){ showSuits(); }
+
 if (renderer){
   renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
   renderer.setClearColor(0x000000, 0);
@@ -817,11 +851,10 @@ if (renderer){
 function view3(){ const h = 2 * 10 * Math.tan(25 * Math.PI / 180); return { h, w: h * (innerWidth / innerHeight) }; }
 const toWorld = (sx, sy) => { const v = view3(); return [(sx / innerWidth - .5) * v.w, -(sy / innerHeight - .5) * v.h]; };
 function coreCenter(){ const r = $(".core").getBoundingClientRect(); return toWorld(r.left + r.width / 2, r.top + r.height * .47); }
-function fitScale(){ const r = $(".core").getBoundingClientRect(); const v = view3(); return Math.max(.35, Math.min(1, (r.width / innerWidth) * v.w / 7.2, (r.height / innerHeight) * v.h / 3.6)); }
+function fitScale(){ const r = $(".core").getBoundingClientRect(); const v = view3(); return Math.max(.35, Math.min(1.3, (r.width / innerWidth) * v.w / H3.dims.w, (r.height / innerHeight) * v.h / H3.dims.h)); }
 function resetHolo(){ const [x, y] = coreCenter(); Object.assign(H3, { x, y, vx: 0, vy: 0, tscale: fitScale() }); if (T3) H3.tq = qAxis(1, 0, 0, .12); }
 function sizeHolo(){ if (!renderer) return; renderer.setSize(innerWidth, innerHeight, false); cam3.aspect = innerWidth / innerHeight; cam3.updateProjectionMatrix(); if (!H3.grabbed) resetHolo(); }
 addEventListener("resize", sizeHolo); sizeHolo(); H3.scale = H3.tscale;
-function setShape(){ H3.visible = true; }
 
 let holoLast = performance.now();
 function renderHolo(now){
@@ -840,6 +873,8 @@ function renderHolo(now){
   }
   H3.q.slerp(H3.tq, Math.min(1, dt * 14));
   H3.scale += (H3.tscale - H3.scale) * Math.min(1, dt * 10);
+  H3.explode += (H3.texplode - H3.explode) * Math.min(1, dt * 2.2);
+  for (const e of EXP) e.obj.position.copy(e.home).addScaledVector(e.dir, H3.explode * e.k);
   holo.position.set(H3.x, H3.y, 0);
   holo.quaternion.copy(H3.q);
   holo.scale.setScalar(H3.scale * (.2 + .8 * H3.appear) * (H3.grabbed ? 1.06 : 1) * (1 + S.amp * .05));
@@ -1063,6 +1098,162 @@ function drawHand(h){
   hctx.font = '11px "Share Tech Mono", Consolas, monospace'; hctx.fillStyle = C(.8);
   hctx.fillText(h.pinched ? "LOCKED" : "PINCH TO GRAB", h.pt[0] + r + 6, h.pt[1] + 4);
 }
+
+/* ---------- photo -> wireframe hologram ---------- */
+// 1) cut the object out of the photo (MediaPipe interactive segmenter, keypoint at the centre)
+// 2) estimate a rounded 3D volume from the silhouette (distance from the edge) plus surface shading
+// 3) draw it as front and back wireframe grids joined at the rim, in bands that separate in exploded view
+let segmenter = null, lastScan = null, scanning = false;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function getSegmenter(){
+  if (segmenter) return segmenter;
+  sysLine("SCAN", "loading object-isolation model…");
+  const { FilesetResolver, InteractiveSegmenter } = await import(MP + "/vision_bundle.mjs");
+  const files = await FilesetResolver.forVisionTasks(MP + "/wasm");
+  const opts = d => ({ baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite", delegate: d }, outputCategoryMask: true, outputConfidenceMasks: false });
+  try { segmenter = await InteractiveSegmenter.createFromOptions(files, opts("GPU")); }
+  catch { segmenter = await InteractiveSegmenter.createFromOptions(files, opts("CPU")); }
+  return segmenter;
+}
+function toCanvas(src, w, h){
+  const sc = Math.min(1, 640 / Math.max(w, h)), c = document.createElement("canvas");
+  c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); return c;
+}
+
+async function analysePhoto(canvas){
+  let mask = null, mw = 0, mh = 0;
+  try {
+    const seg = await getSegmenter();
+    seg.segment(canvas, { keypoint: { x: .5, y: .5 } }, r => {
+      const m = r.categoryMask; if (m){ mw = m.width; mh = m.height; mask = m.getAsUint8Array().slice(); }
+    });
+  } catch (e){ console.warn("segmenter", e); }
+  let inside;
+  if (mask){
+    const objVal = mask[(mh >> 1) * mw + (mw >> 1)];
+    let n = 0; for (let i = 0; i < mask.length; i++) if (mask[i] === objVal) n++;
+    const cov = n / mask.length;
+    if (cov < .01 || cov > .92) mask = null; else inside = (x, y) => mask[y * mw + x] === objVal;
+  }
+  if (!mask){
+    mw = canvas.width; mh = canvas.height;
+    inside = (x, y) => ((x / mw - .5) / .3) ** 2 + ((y / mh - .5) / .38) ** 2 < 1;
+    sysLine("SCAN", "object edges unclear, using the centre of the frame");
+  }
+  // bounding box of the object
+  let x0 = mw, y0 = mh, x1 = 0, y1 = 0;
+  for (let y = 0; y < mh; y += 2) for (let x = 0; x < mw; x += 2) if (inside(x, y)){ if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const bw = Math.max(4, x1 - x0), bh = Math.max(4, y1 - y0), M = 64;
+  const GW = bh >= bw ? Math.max(6, Math.round(M * bw / bh)) : M, GH = bh >= bw ? M : Math.max(6, Math.round(M * bh / bw));
+  const pix = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+  const ins = new Uint8Array(GW * GH), lum = new Float32Array(GW * GH), dist = new Float32Array(GW * GH);
+  for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++){
+    const mx = Math.min(mw - 1, Math.round(x0 + (gx + .5) / GW * bw)), my = Math.min(mh - 1, Math.round(y0 + (gy + .5) / GH * bh));
+    const i = gy * GW + gx; ins[i] = inside(mx, my) ? 1 : 0;
+    const px = Math.min(canvas.width - 1, Math.round(mx * canvas.width / mw)), py = Math.min(canvas.height - 1, Math.round(my * canvas.height / mh)), p = (py * canvas.width + px) * 4;
+    lum[i] = (pix[p] * .299 + pix[p + 1] * .587 + pix[p + 2] * .114) / 255;
+  }
+  // chamfer distance transform: how far each cell is from the object's edge
+  const BIG = 1e6, at = (x, y) => (x < 0 || y < 0 || x >= GW || y >= GH) ? 0 : dist[y * GW + x];
+  for (let i = 0; i < ins.length; i++) dist[i] = ins[i] ? BIG : 0;
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++){ const i = y * GW + x; if (ins[i]) dist[i] = Math.min(dist[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.414, at(x + 1, y - 1) + 1.414); }
+  for (let y = GH - 1; y >= 0; y--) for (let x = GW - 1; x >= 0; x--){ const i = y * GW + x; if (ins[i]) dist[i] = Math.min(dist[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.414, at(x - 1, y + 1) + 1.414); }
+  let maxd = 1; for (const d of dist) if (d > maxd) maxd = d;
+  const dep = dist.map(d => Math.sqrt(d / maxd));   // rounded "pillow" profile
+  return { GW, GH, ins, lum, dep, count: ins.reduce((a, b) => a + b, 0) };
+}
+
+function buildScan(D){
+  clearHolo();
+  const { GW, GH, ins, lum, dep } = D, G = T3;
+  const Hh = 2.6, cell = Hh / GH, Ww = GW * cell, thick = Math.min(Ww, Hh) * .28;
+  const X = gx => (gx - (GW - 1) / 2) * cell, Y = gy => -(gy - (GH - 1) / 2) * cell;
+  const idx = (x, y) => y * GW + x, inn = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && ins[idx(x, y)] === 1;
+  const Z = (i, s) => s > 0 ? dep[i] * thick + (lum[i] - .5) * cell * 1.5 : -dep[i] * thick;
+  const bands = 5, bandOf = gy => Math.min(bands - 1, Math.floor(gy / GH * bands));
+  const segs = Array.from({ length: bands }, () => []), rim = Array.from({ length: bands }, () => []), pts = Array.from({ length: bands }, () => []);
+  const step = 2;
+  for (const s of [1, -1]){
+    const st = s > 0 ? step : step * 2;
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++){
+      if (!inn(x, y)) continue; const i = idx(x, y), b = bandOf(y);
+      if (y % st === 0 && inn(x + 1, y)) segs[b].push(X(x), Y(y), Z(i, s), X(x + 1), Y(y), Z(idx(x + 1, y), s));
+      if (x % st === 0 && inn(x, y + 1)) segs[b].push(X(x), Y(y), Z(i, s), X(x), Y(y + 1), Z(idx(x, y + 1), s));
+      if (s > 0 && x % step === 0 && y % step === 0) pts[b].push(X(x), Y(y), Z(i, s));
+    }
+  }
+  // silhouette rim, plus ribs joining front and back
+  const edge = (x, y) => inn(x, y) && (!inn(x + 1, y) || !inn(x - 1, y) || !inn(x, y + 1) || !inn(x, y - 1));
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++){
+    if (!edge(x, y)) continue; const i = idx(x, y), b = bandOf(y);
+    for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) if (edge(x + dx, y + dy)) rim[b].push(X(x), Y(y), 0, X(x + dx), Y(y + dy), 0);
+    if ((x + y) % 3 === 0) segs[b].push(X(x), Y(y), Z(i, 1), X(x), Y(y), Z(i, -1));
+  }
+  for (let b = 0; b < bands; b++){
+    const g = new G.Group();
+    const mk = (arr, o, kind) => { if (!arr.length) return; const geo = new G.BufferGeometry(); geo.setAttribute("position", new G.Float32BufferAttribute(arr, 3)); g.add(kind === "pts" ? new G.Points(geo, mat("pts", o)) : new G.LineSegments(geo, mat("line", o))); };
+    mk(segs[b], .55); mk(rim[b], 1); mk(pts[b], .5, "pts");
+    holo.add(g);
+    const cyn = ((b + .5) / bands - .5) * 2;
+    addExp(g, new G.Vector3(0, -cyn, b % 2 ? .7 : -.7), 1.1);
+  }
+  const R = Math.max(Ww, thick * 2) / 2 + .35;
+  part(holo, new G.RingGeometry(R, R + .08, 64), 0, -Hh / 2 - .15, 0, 0, .25).rotation.x = -Math.PI / 2;
+  H3.dims = { w: Math.max(Ww, thick * 2) + 1, h: Hh + .8 };
+}
+function showScan(D){
+  if (!renderer) return;
+  buildScan(D); lastScan = D; H3.content = "scan"; H3.appear = 0; H3.visible = true; resetHolo();
+}
+
+async function processPhoto(canvas){
+  setMode("thinking"); sysLine("SCAN", "isolating object…");
+  try {
+    const D = await analysePhoto(canvas);
+    sysLine("SCAN", `building wireframe from ${D.count} sample points`);
+    showScan(D); chime(); setMode("idle");
+    respond(`Scan complete, ${S.address}. Say exploded view to take it apart, or show the suits to go back.`);
+  } catch (e){ setMode("idle"); addMsg("err", "The scan failed. Try again with the object in the middle of the frame and a plain background."); console.warn(e); }
+}
+
+async function startScan(){
+  if (scanning) return; scanning = true;
+  const box = $("#scanBox");
+  try {
+    if (!HT.stream) await startHands();
+    if (!HT.stream || video.readyState < 2) throw new Error("The camera isn't available. Use Upload to scan a photo instead.");
+    getSegmenter().catch(() => {});   // start loading the model during the countdown
+    const cv = $("#scanCv"), cx = cv.getContext("2d"), cnt = $("#scanCount");
+    cv.width = 320; cv.height = Math.round(320 * video.videoHeight / video.videoWidth) || 240;
+    box.hidden = false; let live = true;
+    const draw = () => {
+      if (!live) return;
+      cx.save(); cx.scale(-1, 1); cx.drawImage(video, -cv.width, 0, cv.width, cv.height); cx.restore();
+      const w = cv.width * .42, h = cv.height * .6, l = 16, x = (cv.width - w) / 2, y = (cv.height - h) / 2;
+      cx.strokeStyle = C(.95); cx.lineWidth = 2; cx.beginPath();
+      for (const [px, py, sx, sy] of [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]]){ cx.moveTo(px + sx * l, py); cx.lineTo(px, py); cx.lineTo(px, py + sy * l); }
+      cx.moveTo(cv.width / 2 - 8, cv.height / 2); cx.lineTo(cv.width / 2 + 8, cv.height / 2); cx.moveTo(cv.width / 2, cv.height / 2 - 8); cx.lineTo(cv.width / 2, cv.height / 2 + 8);
+      cx.stroke(); requestAnimationFrame(draw);
+    };
+    draw();
+    for (let n = 3; n > 0; n--){ cnt.textContent = n; blip(); await sleep(850); }
+    const shot = toCanvas(video, video.videoWidth, video.videoHeight);
+    live = false; box.hidden = true;
+    tone(2400, 900, .09, .05, "square"); sysLine("SCAN", "image captured");
+    await processPhoto(shot);
+  } catch (e){ addMsg("err", e.message || "The scan failed."); }
+  finally { scanning = false; box.hidden = true; }
+}
+$("#scanBtn").addEventListener("click", startScan);
+$("#upBtn").addEventListener("click", () => $("#photoIn").click());
+$("#photoIn").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+  const img = new Image();
+  img.onload = () => { const c = toCanvas(img, img.naturalWidth, img.naturalHeight); URL.revokeObjectURL(img.src); sysLine("SCAN", "photo loaded: " + f.name); processPhoto(c); };
+  img.onerror = () => addMsg("err", "That file couldn't be read as an image. Try a JPG or PNG.");
+  img.src = URL.createObjectURL(f);
+});
 
 /* ---------- boot sequence ---------- */
 $("#bootBtn").addEventListener("click", async () => {
