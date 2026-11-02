@@ -100,7 +100,7 @@ header,main,footer{position:relative;z-index:2}
 #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:0;filter:grayscale(1) contrast(1.15) brightness(.8);z-index:0;transition:opacity .8s;pointer-events:none}
 #cam.on{opacity:.22}
 #holo,#hands{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
-#holo{z-index:5} #hands{z-index:6}
+#holo{z-index:5;visibility:hidden;background:transparent} #hands{z-index:6}
 .core{cursor:grab}
 .core.dragging{cursor:grabbing}
 form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
@@ -806,6 +806,7 @@ function buildShape(kind){
 function setShape(k){ if (!renderer) return; buildShape(k === "sphere" ? "globe" : k); store.set("shape", k); H3.visible = true; }
 if (renderer){
   renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+  renderer.setClearColor(0x000000, 0);
   cam3.position.set(0, 0, 10); scene.add(holo);
   const k0 = store.get("shape", "default"); buildShape(k0 === "sphere" ? "globe" : k0);
 }
@@ -822,6 +823,7 @@ function renderHolo(now){
   if (!renderer) return;
   const dt = Math.min(.05, (now - holoLast) / 1000); holoLast = now;
   H3.appear += ((H3.visible ? 1 : 0) - H3.appear) * Math.min(1, dt * 4);
+  holoCv.style.visibility = H3.appear < .01 ? "hidden" : "visible";
   if (H3.appear < .01){ renderer.clear(); return; }
   if (!H3.grabbed){ // coast after a throw, then settle
     H3.x += H3.vx * dt; H3.y += H3.vy * dt; H3.vx *= Math.pow(.04, dt); H3.vy *= Math.pow(.04, dt);
