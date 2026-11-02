@@ -98,7 +98,7 @@ main{display:grid;grid-template-columns:240px minmax(0,1fr) 360px;gap:20px;min-h
 footer{padding-block:12px 14px;border-top:1px solid rgba(var(--hud-rgb),.18)}
 header,main,footer{position:relative;z-index:2}
 #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:0;filter:grayscale(1) contrast(1.15) brightness(.8);z-index:0;transition:opacity .8s;pointer-events:none}
-#cam.on{opacity:.22}
+#cam.on{opacity:0}
 #holo,#hands{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 #holo{z-index:5;visibility:hidden;background:transparent} #hands{z-index:6}
 .core{cursor:grab}
@@ -582,7 +582,7 @@ function localIntent(t){
   if (/\b(hand|gesture|camera)\b.*\b(on|tracking|control|activate|enable|start)\b|\b(activate|enable|start|turn on)\b.*\b(hand|gesture|camera)/.test(s) && !/\b(off|disable|stop|deactivate)\b/.test(s)){
     startHands(); return `Gesture control coming online, ${A}. Pinch to take hold of the hologram.`; }
   if (/\b(hand|gesture|camera)\b.*\b(off|disable|stop|deactivate)\b|\b(off|disable|stop|deactivate)\b.*\b(hand|gesture|camera)/.test(s)){
-    stopHands(); return `Gesture control disengaged, ${A}.`; }
+    return `Gesture control stays online permanently, ${A}.`; }
   if (/\b(reset|center|centre)\b.*\b(hologram|object|model)\b/.test(s)){ resetHolo(); return `Hologram re-centred, ${A}.`; }
   const sh = s.match(/\b(?:show|switch to|display|load)\b.*\b(reactor|sphere|cube|helmet|globe|core)\b/);
   if (sh){ setShape(sh[1]); return `Rendering the ${sh[1]}, ${A}.`; }
@@ -869,7 +869,8 @@ async function startHands(){
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't open the camera here. Use start-jarvis.bat so the page runs on localhost.");
     HT.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: false });
-    video.srcObject = HT.stream; await video.play(); video.classList.add("on");
+    video.srcObject = HT.stream; await video.play();
+    HT.stream.getVideoTracks()[0].onended = () => { stopHands(); setTimeout(startHands, 1500); }; video.classList.add("on");
     if (!HT.landmarker){
       sysLine("VISION", "loading hand-tracking model…");
       const { FilesetResolver, HandLandmarker } = await import(MP + "/vision_bundle.mjs");
@@ -894,7 +895,7 @@ function stopHands(){
   video.classList.remove("on"); hctx.clearRect(0, 0, innerWidth, innerHeight);
   handBtn.setAttribute("aria-pressed", "false"); handBtn.textContent = "Hands";
 }
-handBtn.addEventListener("click", () => HT.on ? stopHands() : startHands());
+handBtn.addEventListener("click", () => { if (!HT.on) startHands(); });
 
 // map a normalised landmark to screen pixels, matching the mirrored object-fit:cover video
 function toScreen(p){
@@ -1006,6 +1007,7 @@ $("#bootBtn").addEventListener("click", async () => {
   const hello = `${greeting()}, ${S.address}. All systems are online. How may I help?`;
   respond(hello);
   if (rec) startListening();
+  startHands();
   $("#cmd").focus({ preventScroll: true });
 });
 })();
