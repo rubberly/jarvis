@@ -2,6 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>JARVIS</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
 <style>
@@ -144,9 +145,28 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
   main{grid-template-columns:1fr;grid-template-rows:minmax(240px,48%) minmax(0,1fr);gap:10px}
   header .hide-sm{display:none}
   .btn.hide-sm{display:none}
+  form{gap:6px}
+  .btn{padding:11px 9px;font-size:12px;letter-spacing:.08em}
+  #mic{width:42px;height:42px}
+  #cmd{font-size:16px;padding:10px}
   #subtitle{font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){ body::after{display:none} }
+/* phone + AR */
+body:not(.phone) .phone-only{display:none}
+body.ar header,body.ar main,body.ar footer{display:none}
+body.ar #cam{opacity:1;transform:none;filter:none}
+#arBar{position:fixed;left:0;right:0;bottom:0;z-index:12;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  background:linear-gradient(transparent,rgba(2,7,12,.8))}
+#arBar .btn{background:rgba(2,7,12,.55);backdrop-filter:blur(4px)}
+#arHint{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));z-index:12;
+  text-align:center;font-family:var(--font-data);font-size:12.5px;line-height:1.5;letter-spacing:.06em;color:var(--text);background:rgba(2,7,12,.6);padding:8px 12px;border:1px solid rgba(var(--hud-rgb),.4)}
+body.ar #scanCv,body.ar #scanBox p{display:none}
+body.ar #scanBox{width:180px;height:180px;background:transparent;border-color:rgba(var(--hud-rgb),.8)}
+body.ar #scanCount{inset:0}
+#qr{display:inline-block;padding:6px;background:#cdeefb;line-height:0}
+#qr img,#qr canvas{display:block;width:128px;height:128px}
 </style>
 </head>
 <body>
@@ -202,6 +222,13 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
         <q>Switch to Mark 42 colours</q>
       </div>
     </section>
+    <section class="panel">
+      <h2>On your phone</h2>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div id="qr"></div>
+        <div class="hint">Scan to open JARVIS on your phone, then tap <b class="hud-c">AR</b> to place the holograms in your room.</div>
+      </div>
+    </section>
   </aside>
 
   <section class="core">
@@ -217,6 +244,13 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
 
 <video id="cam" playsinline muted></video>
 <div id="scanBox" hidden><canvas id="scanCv" width="320" height="240"></canvas><div id="scanCount">3</div><p>Hold the object in the brackets</p></div>
+<div id="arHint" hidden></div>
+<div id="arBar" hidden>
+  <button class="btn" type="button" id="arScan">Scan</button>
+  <button class="btn" type="button" id="arExplode" aria-pressed="false">Explode</button>
+  <button class="btn" type="button" id="arReset">Reset</button>
+  <button class="btn" type="button" id="arExit">Exit AR</button>
+</div>
 <canvas id="holo" aria-hidden="true"></canvas>
 <canvas id="hands" aria-hidden="true"></canvas>
 
@@ -226,7 +260,8 @@ form{display:flex;gap:10px;align-items:center;max-width:980px;margin:0 auto}
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="none"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
     </button>
     <input id="cmd" type="text" placeholder="Speak or type a command…" aria-label="Command">
-    <button class="btn" type="submit">Send</button>
+    <button class="btn hide-sm" type="submit">Send</button>
+    <button class="btn phone-only" type="button" id="arBtn" title="Place holograms in the room with the back camera">AR</button>
     <button class="btn" type="button" id="scanBtn" title="Take a photo of an object and turn it into a wireframe hologram">Scan</button>
     <button class="btn" type="button" id="upBtn" title="Turn a photo into a wireframe hologram">Upload</button>
     <input type="file" id="photoIn" accept="image/*" hidden>
@@ -596,6 +631,7 @@ function localIntent(t){
     return `Gesture control stays online permanently, ${A}.`; }
   if (/\b(reset|center|centre)\b.*\b(hologram|object|model)\b/.test(s)){ resetHolo(); return `Hologram re-centred, ${A}.`; }
   if (/\b(show|display|bring up)\b.*\b(scan|scanned|object)\b/.test(s)){ if (!lastScan) return `There's no scan yet, ${A}. Say take a photo, or press Scan.`; showScan(lastScan); return `Here's your last scan, ${A}.`; }
+  if (/\b(ar|augmented reality)\b/.test(s)){ if (!isPhone) return `AR mode needs a phone's back camera, ${A}. Open this page on your phone and tap AR.`; enterAR(); return `Switching to augmented reality, ${A}.`; }
   if (/\b(scan|photo|picture|capture|snapshot)\b/.test(s)){ startScan(); return `Hold it up to the camera, ${A}. Scanning in three seconds.`; }
   if (/\b(explode|exploded|break (it|them) apart|disassemble|take (it|them) apart)\b/.test(s)){ H3.visible = true; H3.texplode = 1; return `Exploded view, ${A}.`; }
   if (/\b(assemble|reassemble|put (it|them) (back )?together|collapse)\b/.test(s)){ H3.texplode = 0; return `Reassembling, ${A}.`; }
@@ -778,6 +814,7 @@ const qAxis = (x, y, z, a) => new T3.Quaternion().setFromAxisAngle(new T3.Vector
 const H3 = { x: 0, y: 0, vx: 0, vy: 0, q: null, tq: null, scale: 1, tscale: 1, grabbed: false, dragging: false, visible: true, appear: 0, spin: .35,
   explode: 0, texplode: 0, dims: { w: 7.2, h: 3.6 }, content: "suits" };
 if (T3){ H3.tq = qAxis(1, 0, 0, .12); H3.q = H3.tq.clone(); }
+const AR = { on: false };
 
 function mat(kind, opacity){
   const m = kind === "line" ? new T3.LineBasicMaterial({ transparent: true, opacity, blending: T3.AdditiveBlending, depthWrite: false })
@@ -791,12 +828,15 @@ function part(parent, geo, x, y, z, wo, mo){
   if (wo) g.add(new T3.LineSegments(new T3.EdgesGeometry(geo), mat("line", wo)));
   g.position.set(x, y, z); parent.add(g); return g;
 }
-function clearHolo(){
-  holo.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-  while (holo.children.length) holo.remove(holo.children[0]);
-  holoMats.forEach(m => m.dispose()); holoMats.length = 0; EXP.length = 0;
-  H3.explode = H3.texplode = 0;
+function isIn(o, root){ for (; o; o = o.parent) if (o === root) return true; return false; }
+function disposeTree(root){
+  const kill = new Set();
+  root.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) kill.add(o.material); });
+  for (let i = EXP.length - 1; i >= 0; i--) if (isIn(EXP[i].obj, root)) EXP.splice(i, 1);
+  for (let i = holoMats.length - 1; i >= 0; i--) if (kill.has(holoMats[i])){ holoMats[i].dispose(); holoMats.splice(i, 1); }
+  while (root.children.length) root.remove(root.children[0]);
 }
+function clearHolo(){ disposeTree(holo); H3.explode = H3.texplode = 0; }
 function addExp(obj, dir, k){ EXP.push({ obj, home: obj.position.clone(), dir: dir.normalize(), k }); }
 
 // one stylised powered-armour suit; v sets its build
@@ -853,7 +893,7 @@ const toWorld = (sx, sy) => { const v = view3(); return [(sx / innerWidth - .5) 
 function coreCenter(){ const r = $(".core").getBoundingClientRect(); return toWorld(r.left + r.width / 2, r.top + r.height * .47); }
 function fitScale(){ const r = $(".core").getBoundingClientRect(); const v = view3(); return Math.max(.35, Math.min(1.3, (r.width / innerWidth) * v.w / H3.dims.w, (r.height / innerHeight) * v.h / H3.dims.h)); }
 function resetHolo(){ const [x, y] = coreCenter(); Object.assign(H3, { x, y, vx: 0, vy: 0, tscale: fitScale() }); if (T3) H3.tq = qAxis(1, 0, 0, .12); }
-function sizeHolo(){ if (!renderer) return; renderer.setSize(innerWidth, innerHeight, false); cam3.aspect = innerWidth / innerHeight; cam3.updateProjectionMatrix(); if (!H3.grabbed) resetHolo(); }
+function sizeHolo(){ if (!renderer) return; renderer.setSize(innerWidth, innerHeight, false); if (AR.on){ arFov(); return; } cam3.aspect = innerWidth / innerHeight; cam3.updateProjectionMatrix(); if (!H3.grabbed) resetHolo(); }
 addEventListener("resize", sizeHolo); sizeHolo(); H3.scale = H3.tscale;
 
 let holoLast = performance.now();
@@ -862,8 +902,16 @@ function renderHolo(now){
   if (!renderer) return;
   const dt = Math.min(.05, (now - holoLast) / 1000); holoLast = now;
   H3.appear += ((H3.visible ? 1 : 0) - H3.appear) * Math.min(1, dt * 3);
-  holoCv.style.visibility = H3.appear < .01 ? "hidden" : "visible";
-  if (H3.appear < .01){ renderer.clear(); return; }
+  const show = AR.on || H3.appear >= .01;
+  holoCv.style.visibility = show ? "visible" : "hidden";
+  if (!show){ renderer.clear(); return; }
+  H3.explode += (H3.texplode - H3.explode) * Math.min(1, dt * 2.2);
+  for (const e of EXP) e.obj.position.copy(e.home).addScaledVector(e.dir, H3.explode * e.k);
+  const col = new T3.Color(`rgb(${HUD.join(",")})`);
+  const flicker = .92 + .08 * Math.sin(now * .031) * Math.sin(now * .017);
+  const lit = AR.on ? 1.4 : H3.appear * (H3.grabbed ? 1.15 : 1);
+  for (const m of holoMats){ m.color.copy(col); m.opacity = Math.min(1, m.userData.base * lit * flicker); }
+  if (AR.on){ arFrame(now, dt); renderer.render(scene, cam3); return; }
   if (!H3.grabbed){
     H3.x += H3.vx * dt; H3.y += H3.vy * dt; H3.vx *= Math.pow(.05, dt); H3.vy *= Math.pow(.05, dt);
     const v = view3(), mx = v.w / 2 - .6, my = v.h / 2 - .6;
@@ -873,14 +921,9 @@ function renderHolo(now){
   }
   H3.q.slerp(H3.tq, Math.min(1, dt * 14));
   H3.scale += (H3.tscale - H3.scale) * Math.min(1, dt * 10);
-  H3.explode += (H3.texplode - H3.explode) * Math.min(1, dt * 2.2);
-  for (const e of EXP) e.obj.position.copy(e.home).addScaledVector(e.dir, H3.explode * e.k);
   holo.position.set(H3.x, H3.y, 0);
   holo.quaternion.copy(H3.q);
   holo.scale.setScalar(H3.scale * (.2 + .8 * H3.appear) * (H3.grabbed ? 1.06 : 1) * (1 + S.amp * .05));
-  const col = new T3.Color(`rgb(${HUD.join(",")})`);
-  const flicker = .92 + .08 * Math.sin(now * .031) * Math.sin(now * .017);
-  for (const m of holoMats){ m.color.copy(col); m.opacity = Math.min(1, m.userData.base * H3.appear * flicker * (H3.grabbed ? 1.15 : 1)); }
   renderer.render(scene, cam3);
 }
 requestAnimationFrame(renderHolo);
@@ -920,27 +963,29 @@ class OneEuro {
   }
 }
 
+async function loadLandmarker(){
+  if (HT.landmarker) return;
+  sysLine("VISION", "loading hand-tracking model…");
+  const { FilesetResolver, HandLandmarker } = await import(MP + "/vision_bundle.mjs");
+  const files = await FilesetResolver.forVisionTasks(MP + "/wasm");
+  const opts = d => ({ baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: d },
+    runningMode: "VIDEO", numHands: 2, minHandDetectionConfidence: .5, minHandPresenceConfidence: .5, minTrackingConfidence: .5 });
+  try { HT.landmarker = await HandLandmarker.createFromOptions(files, opts("GPU")); }
+  catch { HT.landmarker = await HandLandmarker.createFromOptions(files, opts("CPU")); }
+}
 async function startHands(){
-  if (HT.on) return;
+  if (HT.on || AR.on) return;
   handBtn.setAttribute("aria-pressed", "true"); handBtn.textContent = "Hands…";
   H3.visible = true;
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("This browser can't open the camera here.");
     HT.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 60 }, facingMode: "user" }, audio: false });
-    video.srcObject = HT.stream; await video.play();
+    HT.facing = "user"; video.srcObject = HT.stream; await video.play();
     HT.stream.getVideoTracks()[0].onended = () => { stopHands(); setTimeout(startHands, 1500); };
-    if (!HT.landmarker){
-      sysLine("VISION", "loading hand-tracking model…");
-      const { FilesetResolver, HandLandmarker } = await import(MP + "/vision_bundle.mjs");
-      const files = await FilesetResolver.forVisionTasks(MP + "/wasm");
-      const opts = d => ({ baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: d },
-        runningMode: "VIDEO", numHands: 2, minHandDetectionConfidence: .5, minHandPresenceConfidence: .5, minTrackingConfidence: .5 });
-      try { HT.landmarker = await HandLandmarker.createFromOptions(files, opts("GPU")); }
-      catch { HT.landmarker = await HandLandmarker.createFromOptions(files, opts("CPU")); }
-    }
+    await loadLandmarker();
     HT.on = true; HT.lastSeen = performance.now(); handBtn.textContent = "Hands on";
     sysLine("VISION", "gesture control online");
-    scheduleTrack();
+    startLoop();
   } catch (e){
     stopHands();
     addMsg("err", e && e.name === "NotAllowedError" ? "Camera permission was denied. Allow the camera in the address bar, then press Hands." : (e && e.message) || "The camera could not be started.");
@@ -953,15 +998,13 @@ function stopHands(){
 }
 handBtn.addEventListener("click", () => { if (!HT.on) startHands(); });
 
-function scheduleTrack(){
-  if (!HT.on) return;
-  if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(trackFrame); else requestAnimationFrame(trackFrame);
-}
+function startLoop(){ if (HT.looping) return; HT.looping = true; requestAnimationFrame(trackFrame); }
+function scheduleTrack(){ if (!HT.on){ HT.looping = false; return; } requestAnimationFrame(trackFrame); }
 // map a normalised landmark to screen pixels, matching a mirrored object-fit:cover video
 function toScreen(p){
   const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
   const sc = Math.max(innerWidth / vw, innerHeight / vh), dw = vw * sc, dh = vh * sc;
-  return [(innerWidth - dw) / 2 + (1 - p.x) * dw, (innerHeight - dh) / 2 + p.y * dh];
+  return [(innerWidth - dw) / 2 + (HT.facing === "environment" ? p.x : 1 - p.x) * dw, (innerHeight - dh) / 2 + p.y * dh];
 }
 const d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -969,7 +1012,7 @@ const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 // full 3D orientation of the hand, in the same mirrored space the user sees
 function handQuat(W){
   if (!T3) return null;
-  const m = p => new T3.Vector3(-p[0], -p[1], -p[2]);
+  const sx = HT.facing === "environment" ? 1 : -1, m = p => new T3.Vector3(sx * p[0], -p[1], -p[2]);
   const x = m(W[5]).sub(m(W[17])).normalize();
   const y0 = m(W[9]).sub(m(W[0])).normalize();
   const z = new T3.Vector3().crossVectors(x, y0).normalize();
@@ -1037,6 +1080,7 @@ function trackFrame(){
 }
 
 function handleGrab(hands, t){
+  if (AR.on) return arGrab(hands, t);
   if (!T3) return;
   const pinched = hands.filter(h => h.pinched);
   if (pinched.length >= 2){
@@ -1164,8 +1208,8 @@ async function analysePhoto(canvas){
   return { GW, GH, ins, lum, dep, count: ins.reduce((a, b) => a + b, 0) };
 }
 
-function buildScan(D){
-  clearHolo();
+function buildScan(D){ clearHolo(); H3.dims = buildScanInto(D, holo); }
+function buildScanInto(D, root){
   const { GW, GH, ins, lum, dep } = D, G = T3;
   const Hh = 2.6, cell = Hh / GH, Ww = GW * cell, thick = Math.min(Ww, Hh) * .28;
   const X = gx => (gx - (GW - 1) / 2) * cell, Y = gy => -(gy - (GH - 1) / 2) * cell;
@@ -1194,13 +1238,13 @@ function buildScan(D){
     const g = new G.Group();
     const mk = (arr, o, kind) => { if (!arr.length) return; const geo = new G.BufferGeometry(); geo.setAttribute("position", new G.Float32BufferAttribute(arr, 3)); g.add(kind === "pts" ? new G.Points(geo, mat("pts", o)) : new G.LineSegments(geo, mat("line", o))); };
     mk(segs[b], .55); mk(rim[b], 1); mk(pts[b], .5, "pts");
-    holo.add(g);
+    root.add(g);
     const cyn = ((b + .5) / bands - .5) * 2;
     addExp(g, new G.Vector3(0, -cyn, b % 2 ? .7 : -.7), 1.1);
   }
   const R = Math.max(Ww, thick * 2) / 2 + .35;
-  part(holo, new G.RingGeometry(R, R + .08, 64), 0, -Hh / 2 - .15, 0, 0, .25).rotation.x = -Math.PI / 2;
-  H3.dims = { w: Math.max(Ww, thick * 2) + 1, h: Hh + .8 };
+  part(root, new G.RingGeometry(R, R + .08, 64), 0, -Hh / 2 - .15, 0, 0, .25).rotation.x = -Math.PI / 2;
+  return { w: Math.max(Ww, thick * 2) + 1, h: Hh + .8 };
 }
 function showScan(D){
   if (!renderer) return;
@@ -1212,8 +1256,9 @@ async function processPhoto(canvas){
   try {
     const D = await analysePhoto(canvas);
     sysLine("SCAN", `building wireframe from ${D.count} sample points`);
-    showScan(D); chime(); setMode("idle");
-    respond(`Scan complete, ${S.address}. Say exploded view to take it apart, or show the suits to go back.`);
+    chime(); setMode("idle");
+    if (AR.on){ arAddScan(D); respond(`Scan placed in front of you, ${S.address}.`); }
+    else { showScan(D); respond(`Scan complete, ${S.address}. Say exploded view to take it apart, or show the suits to go back.`); }
   } catch (e){ setMode("idle"); addMsg("err", "The scan failed. Try again with the object in the middle of the frame and a plain background."); console.warn(e); }
 }
 
@@ -1255,6 +1300,163 @@ $("#photoIn").addEventListener("change", e => {
   img.src = URL.createObjectURL(f);
 });
 
+/* ---------- AR mode: back camera + holograms pinned in the room, moved by hand ---------- */
+// Holograms are anchored using the phone's orientation sensors (turning the phone keeps them in place;
+// walking around does not). The other hand, seen by the back camera, grabs and moves them.
+Object.assign(AR, { root: renderer ? new T3.Group() : null, items: [], camT: T3 ? new T3.Quaternion() : null, gotOri: false, placed: false, t0: 0, grab: null, two: null, lostT: 0, lock: null, hintT: 0 });
+if (renderer){ scene.add(AR.root); AR.root.visible = false; }
+const isPhone = matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+document.body.classList.toggle("phone", isPhone);
+
+const zee = T3 && new T3.Vector3(0, 0, 1), qScreenFix = T3 && new T3.Quaternion(-Math.sqrt(.5), 0, 0, Math.sqrt(.5));
+function onOri(e){
+  if (e.alpha == null || !T3) return;
+  const r = Math.PI / 180, orient = ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * r;
+  AR.camT.setFromEuler(new T3.Euler(e.beta * r, e.alpha * r, -e.gamma * r, "YXZ")).multiply(qScreenFix).multiply(new T3.Quaternion().setFromAxisAngle(zee, -orient));
+  if (!AR.gotOri){ AR.gotOri = true; cam3.quaternion.copy(AR.camT); }
+}
+function arFov(){ cam3.fov = innerHeight > innerWidth ? 62 : 44; cam3.aspect = innerWidth / innerHeight; cam3.updateProjectionMatrix(); }
+
+function arItem(obj, h, scale){ const g = new T3.Group(); g.add(obj); g.userData.h = h; g.scale.setScalar(scale); AR.root.add(g); AR.items.push(g); return g; }
+function arPlaceInFront(item, dist, side, drop){
+  const f = new T3.Vector3(0, 0, -1).applyQuaternion(cam3.quaternion); f.y = 0;
+  if (f.lengthSq() < 1e-4) f.set(0, 0, -1); f.normalize();
+  const right = new T3.Vector3().crossVectors(f, new T3.Vector3(0, 1, 0)).normalize();
+  item.position.copy(f.multiplyScalar(dist)).addScaledVector(right, side).add(new T3.Vector3(0, -drop, 0));
+  item.lookAt(0, item.position.y, 0);          // face the viewer
+  item.userData.target = item.position.clone(); item.userData.tq = null;
+}
+const AR_SUITS = [
+  { scale: .92, chest: .36, arm: .085, leg: .12, head: .95 },
+  { scale: 1,   chest: .42, arm: .1,   leg: .14, head: 1 },
+  { scale: 1.08, chest: .55, arm: .14, leg: .19, head: 1.05 },
+];
+function arBuild(){
+  disposeTree(AR.root); AR.items = [];
+  AR_SUITS.forEach((v, i) => { arItem(buildSuit(v), 3.1, .42).userData.slot = i - 1; });
+  if (lastScan){ const g = new T3.Group(); buildScanInto(lastScan, g); const it = arItem(g, 2.6, .35); it.userData.scan = true; }
+}
+function arPlace(){
+  for (const it of AR.items){
+    if (it.userData.scan) arPlaceInFront(it, 2.2, 0, .15);
+    else arPlaceInFront(it, 3.2, it.userData.slot * 1.15, .55);
+  }
+  AR.placed = true;
+}
+function arAddScan(D){
+  lastScan = D;
+  const g = new T3.Group(); buildScanInto(D, g);
+  const it = arItem(g, 2.6, .35); it.userData.scan = true; arPlaceInFront(it, 2, 0, .1);
+}
+function arReset(){ arPlace(); for (const it of AR.items) it.scale.setScalar(it.userData.scan ? .35 : .42); H3.texplode = 0; }
+
+function arFrame(now, dt){
+  if (AR.gotOri) cam3.quaternion.slerp(AR.camT, Math.min(1, dt * 20));
+  if (!AR.placed && (AR.gotOri || now - AR.t0 > 900)) arPlace();
+  for (const it of AR.items){
+    const held = AR.grab && AR.grab.item === it;
+    if (it.userData.target) it.position.lerp(it.userData.target, Math.min(1, dt * 14));
+    if (it.userData.tq) it.quaternion.slerp(it.userData.tq, Math.min(1, dt * 14));
+    else if (!held) it.rotateY(.25 * dt);
+  }
+}
+
+function rayDir(sx, sy){
+  return new T3.Vector3(sx / innerWidth * 2 - 1, -(sy / innerHeight) * 2 + 1, .5).unproject(cam3).sub(cam3.position).normalize();
+}
+function pickItem(pt){
+  let best = null, bestScore = Infinity;
+  const half = Math.tan(cam3.fov * Math.PI / 360);
+  for (const it of AR.items){
+    const p = it.position.clone().project(cam3); if (p.z > 1) continue;     // behind the camera
+    const sx = (p.x + 1) / 2 * innerWidth, sy = (1 - p.y) / 2 * innerHeight;
+    const dist = Math.max(.3, it.position.distanceTo(cam3.position));
+    const r = (it.userData.h * it.scale.x / 2) / (dist * half) * (innerHeight / 2);
+    const d = Math.hypot(pt[0] - sx, pt[1] - sy);
+    if (d < r + 90 && d / (r + 60) < bestScore){ bestScore = d / (r + 60); best = it; }
+  }
+  return best;
+}
+function arGrab(hands, t){
+  const pinched = hands.filter(h => h.pinched);
+  if (pinched.length >= 2 && AR.grab){             // second hand pinching too: resize the held hologram
+    const d = d2(pinched[0].pt, pinched[1].pt);
+    if (!AR.two) AR.two = { d0: d, s0: AR.grab.item.scale.x };
+    AR.grab.item.scale.setScalar(Math.max(.05, Math.min(4, AR.two.s0 * d / AR.two.d0)));
+    return;
+  }
+  AR.two = null;
+  if (pinched.length){
+    const h = (AR.grab && pinched.find(p => p.key === AR.grab.key)) || pinched[0];
+    if (!AR.grab){
+      const item = pickItem(h.pt); if (!item) return;
+      AR.grab = { key: h.key, item, d0: item.position.distanceTo(cam3.position), size0: h.size, q0: h.q && h.q.clone(), obj0: item.quaternion.clone(), camQ: cam3.quaternion.clone() };
+      blip();
+    }
+    const g = AR.grab;
+    // a hand that moves toward the camera looks bigger: pull the hologram closer
+    const d = Math.max(.6, Math.min(25, g.d0 * Math.pow(g.size0 / h.size, 1.3)));
+    g.item.userData.target = rayDir(h.pt[0], h.pt[1]).multiplyScalar(d).add(cam3.position);
+    if (h.q && g.q0){
+      const dl = ampQuat(h.q.clone().multiply(g.q0.clone().invert()), 1.4);
+      g.item.userData.tq = g.camQ.clone().multiply(dl).multiply(g.camQ.clone().invert()).multiply(g.obj0);
+    }
+    AR.lostT = 0; return;
+  }
+  if (AR.grab){
+    if (!hands.some(h => h.key === AR.grab.key)){ if (!AR.lostT) AR.lostT = t; if (t - AR.lostT < 350) return; }
+    AR.grab.item.userData.tq = null; AR.grab = null; AR.lostT = 0; tone(900, 600, .1, .03, "triangle");
+  }
+}
+
+async function enterAR(){
+  if (AR.on || !renderer) return;
+  let motion = null;   // iOS only grants motion sensors from the tap itself, so ask before anything async
+  try { if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") motion = DeviceOrientationEvent.requestPermission(); } catch {}
+  hush(); stopHands();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    HT.stream = stream; HT.facing = "environment"; video.srcObject = stream; await video.play();
+    stream.getVideoTracks()[0].onended = () => exitAR();
+  } catch (e){
+    HT.facing = "user"; startHands();
+    addMsg("err", e && e.name === "NotAllowedError" ? "Camera permission was denied, so AR mode can't start." : "The back camera couldn't be opened on this device.");
+    return;
+  }
+  let perm = "granted"; if (motion) perm = await motion.catch(() => "denied");
+  AR.gotOri = false; if (perm === "granted") addEventListener("deviceorientation", onOri);
+  Object.assign(AR, { on: true, placed: false, t0: performance.now(), grab: null, two: null });
+  document.body.classList.add("ar"); $("#arBar").hidden = false;
+  const hint = $("#arHint"); hint.hidden = false;
+  hint.textContent = perm === "granted" ? "Hold your other hand in view · pinch a hologram to grab it · bring your hand closer to pull it in"
+    : "Motion access is off, so holograms stay put on screen instead of in the room · pinch to grab";
+  clearTimeout(AR.hintT); AR.hintT = setTimeout(() => { hint.hidden = true; }, 8000);
+  holo.visible = false; AR.root.visible = true; H3.texplode = 0; $("#arExplode").setAttribute("aria-pressed", "false");
+  cam3.position.set(0, 0, 0); cam3.quaternion.identity(); arFov();
+  arBuild();
+  try { await loadLandmarker(); HT.on = true; HT.lastSeen = performance.now(); startLoop(); }
+  catch { addMsg("err", "Hand tracking couldn't load, so holograms can't be grabbed."); }
+  try { AR.lock = await navigator.wakeLock?.request("screen"); } catch {}
+}
+function exitAR(){
+  if (!AR.on) return;
+  AR.on = false; AR.grab = null; removeEventListener("deviceorientation", onOri);
+  stopHands(); HT.facing = "user";
+  document.body.classList.remove("ar"); $("#arBar").hidden = true; $("#arHint").hidden = true;
+  disposeTree(AR.root); AR.items = []; AR.root.visible = false; holo.visible = true; H3.texplode = 0;
+  cam3.position.set(0, 0, 10); cam3.quaternion.identity(); cam3.fov = 50; sizeHolo();
+  try { AR.lock && AR.lock.release(); } catch {} AR.lock = null;
+  startHands();
+}
+$("#arBtn").addEventListener("click", enterAR);
+$("#arExit").addEventListener("click", exitAR);
+$("#arScan").addEventListener("click", startScan);
+$("#arReset").addEventListener("click", arReset);
+$("#arExplode").addEventListener("click", e => { H3.texplode = H3.texplode ? 0 : 1; e.currentTarget.setAttribute("aria-pressed", String(!!H3.texplode)); });
+
+// QR code so a desktop visitor can open the page on their phone
+try { if (window.QRCode) new QRCode($("#qr"), { text: location.origin + location.pathname, width: 128, height: 128, colorDark: "#02070c", colorLight: "#cdeefb", correctLevel: QRCode.CorrectLevel.M }); } catch {}
+
 /* ---------- boot sequence ---------- */
 $("#bootBtn").addEventListener("click", async () => {
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
@@ -1271,6 +1473,7 @@ $("#bootBtn").addEventListener("click", async () => {
   respond(hello);
   if (rec) startListening();
   H3.visible = true; startHands();
+  if (isPhone) sysLine("AR", "tap AR to place the holograms in your room");
   $("#cmd").focus({ preventScroll: true });
 });
 })();
